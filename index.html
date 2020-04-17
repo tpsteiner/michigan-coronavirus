@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <script src="//d3js.org/d3.v4.js"></script>
+  <script src="//d3js.org/topojson.v1.min.js"></script>
+  <script src="//d3js.org/queue.v1.min.js"></script>
+  <script src="//d3js.org/d3-scale-chromatic.v1.min.js"></script>
+  <style>
+    body { margin:0;position:fixed;top:0;right:0;bottom:0;left:0; }
+    svg { width:100%; height: 100%; background-color: lightgrey; }
+	path.county { stroke:black; stroke-width:0.5 }
+	.tooltip {
+		position: absolute;
+		max-width: 400px;
+		height: auto;
+		padding: 5px;
+		background-color: white;
+		-webkit-border-radius: 5px;
+		-moz-border-radius: 5px;
+		border-radius: 5px;
+		-webkit-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+		-moz-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+		box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+		pointer-events: none;
+		font-family: sans-serif;
+		font-size: 12px;
+	}
+	text { pointer-events: none; }
+	h1 { position: absolute; left:45%; margin-top: 10; }
+  </style>
+</head>
+
+<body>
+<h1>Michigan Coronavirus<br>Confirmed Cases by County</h1>
+</body>
+
+  <script>
+    var width = document.body.clientWidth;
+    var height = document.body.clientHeight;
+    
+    var svg = d3.select("body").append("svg");
+    
+	queue()
+		.defer(d3.json, "mi.json")
+		.defer(d3.csv, "cases.csv")
+		.await(ready);
+
+	function ready(error, mi_map, cases) {
+	  var casesByCounty = {};
+	  var deathsByCounty = {};
+	  
+		cases.forEach(function(d) { 
+			casesByCounty[d.county] = +d.cases;
+			deathsByCounty[d.county] = +d.deaths; 
+			})
+				
+		var counties = topojson.feature(mi_map, mi_map.objects.cb_2018_us_county_5m);
+		
+		var path = d3.geoPath()
+		.projection(d3.geoMercator()
+			.fitSize([width, height], counties));
+		
+		counties.features.forEach(function(d) { 
+			d.cases = casesByCounty[d.properties.NAME]; 
+			d.deaths = deathsByCounty[d.properties.NAME];
+			});
+		
+		var max_cases = d3.max(counties.features, function(d) { return d.cases })
+		
+		var color = d3.scaleLog()
+			.domain([1, max_cases])
+			.range([.1, .8])
+
+		var tooltip = d3.select("body").append("div")
+            .attr("class", "tooltip")
+            .style("opacity", 0)
+            .style("width", 600);
+			
+		svg.selectAll("path.county")
+			.data(counties.features)
+			.enter()
+			.append("path")
+			.attr("class", "county")
+			.attr("d", path)
+			.style("fill", function(d) { return d3.interpolateGreens(color(d.cases)); })
+			.on("mouseover", function(d) {                   
+				<!-- tooltip.style("visibility", "visible");    -->
+				d3.select(this).style("stroke-width", 2);
+				var tip = "<b>" + d.properties.NAME + "</b><br />Cases: " + d.cases + "<br />Deaths: " + d.deaths;
+				tooltip.html(tip)
+					.style("left", (d3.event.pageX) + "px")
+					.style("top", (d3.event.pageY) + "px");
+				tooltip.transition()
+					.duration(500)
+					.style("opacity", 1);
+				
+				})
+			.on("mouseout", function(d) {       
+				<!-- tooltip.style("visibility", "hidden"); -->
+				d3.select(this).style("stroke-width", 0.5);
+				tooltip.transition()
+					.duration(200)
+					.style("opacity", 0);
+				})
+			.on("mousemove", function(d) {
+				var tip = "<b>" + d.properties.NAME + "</b><br />Cases: " + d.cases + "<br />Deaths: " + d.deaths;
+				tooltip.html(tip)
+					.style("left", (d3.event.pageX - 62) + "px")
+					.style("top", (d3.event.pageY - 54) + "px");
+				})
+			
+		svg.selectAll("text")
+			.data(counties.features)
+			.enter()
+			.append("text")
+			.attr("fill", "black")
+			.attr("transform", function(d) { 
+				var centroid = path.centroid(d);
+				return "translate(" + centroid[0] + "," + centroid[1] + ")"
+				})
+			.attr("text-anchor", "middle")
+			.attr("dy", ".35em")
+			.text(function(d) {
+				  if (d.cases == 0) {
+				  return "";
+				  } else {
+				  return d.cases
+				  }
+				})	
+    }
+  </script>
